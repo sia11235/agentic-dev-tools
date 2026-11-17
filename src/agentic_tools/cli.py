@@ -4,9 +4,10 @@ import sys
 
 import click
 
+from .review.chunk import DEFAULT_EXCLUDES, DEFAULT_MAX_CHUNK_CHARS, chunk_diff
 from .review.diff import GitError, get_diff
 from .review.report import render_json, render_markdown, render_text
-from .review.reviewer import DEFAULT_MODEL, ReviewError, review_diff
+from .review.reviewer import DEFAULT_MODEL, ReviewError, review_chunks
 
 
 @click.group()
@@ -17,6 +18,29 @@ def main() -> None:
 @main.command()
 @click.option("--base", default=None, help="Base branch to diff against (e.g. main). Defaults to local changes only.")
 @click.option("--staged", is_flag=True, help="Only review staged changes.")
+@click.option("--commit", default=None, help="Review a single commit (e.g. 6f59e93) against its parent.")
+@click.option(
+    "--range",
+    "rev_range",
+    default=None,
+    help="Review a revision range, e.g. abc123..def456 or origin/develop...HEAD.",
+)
+@click.option(
+    "--max-chunk-chars",
+    default=DEFAULT_MAX_CHUNK_CHARS,
+    show_default=True,
+    help="Split the diff by file into requests of at most this many characters.",
+)
+@click.option(
+    "--exclude",
+    multiple=True,
+    help="Extra glob to skip (repeatable), e.g. --exclude 'drizzle/*'.",
+)
+@click.option(
+    "--no-default-excludes",
+    is_flag=True,
+    help="Also review lockfiles, generated files and assets that are skipped by default.",
+)
 @click.option(
     "--format",
     "output_format",
@@ -31,10 +55,21 @@ def main() -> None:
     show_default=True,
     help="Exit non-zero if a finding at or above this severity is found.",
 )
-def review(base: str | None, staged: bool, output_format: str, model: str, fail_on: str) -> None:
+def review(
+    base: str | None,
+    staged: bool,
+    commit: str | None,
+    rev_range: str | None,
+    max_chunk_chars: int,
+    exclude: tuple[str, ...],
+    no_default_excludes: bool,
+    output_format: str,
+    model: str,
+    fail_on: str,
+) -> None:
     """Review the current diff with Claude before you open a PR."""
     try:
-        diff = get_diff(base=base, staged_only=staged)
+        diff = get_diff(base=base, staged_only=staged, commit=commit, rev_range=rev_range)
     except GitError as e:
         click.echo(f"git error: {e}", err=True)
         sys.exit(2)
@@ -43,8 +78,24 @@ def review(base: str | None, staged: bool, output_format: str, model: str, fail_
         click.echo("No changes to review.")
         return
 
+    excludes = tuple(exclude) + (() if no_default_excludes else DEFAULT_EXCLUDES)
+    chunks, skipped = chunk_diff(diff, max_chars=max_chunk_chars, excludes=excludes)
+    if skipped:
+        click.echo(f"Skipping {len(skipped)} file(s): {', '.join(skipped)}", err=True)
+    if not chunks:
+        click.echo("Nothing left to review after excludes.")
+        return
+
+    all_paths = list(dict.fromkeys(p for c in chunks for p in c.paths))
+
+    def progress(i: int, total: int) -> None:
+        if total > 1:
+            click.echo(f"Reviewing part {i}/{total}...", err=True)
+
     try:
-        findings = review_diff(diff, model=model)
+        findings = review_chunks(
+            [c.text for c in chunks], model=model, all_paths=all_paths, on_progress=progress
+        )
     except ReviewError as e:
         click.echo(f"review error: {e}", err=True)
         sys.exit(2)
