@@ -72,7 +72,39 @@ class ReviewError(RuntimeError):
     pass
 
 
-def review_diff(diff: str, model: str = DEFAULT_MODEL) -> list[Finding]:
+def _chunk_note(part: int, total: int, all_paths: list[str]) -> str:
+    listing = "\n".join(f"- {p}" for p in all_paths)
+    return (
+        f"This is part {part} of {total} of a larger diff, split by file. "
+        "Other parts are reviewed separately, so do not report something as missing "
+        "just because it is not in this part (e.g. a test or caller in another file). "
+        f"Files changed in the full diff:\n{listing}\n\n"
+    )
+
+
+def review_chunks(
+    chunks: list[str],
+    model: str = DEFAULT_MODEL,
+    all_paths: list[str] | None = None,
+    on_progress=None,
+) -> list[Finding]:
+    """Review each chunk separately and merge the findings (deduplicated)."""
+    total = len(chunks)
+    findings: list[Finding] = []
+    seen: set[tuple] = set()
+    for i, chunk in enumerate(chunks, start=1):
+        if on_progress:
+            on_progress(i, total)
+        preamble = _chunk_note(i, total, all_paths or []) if total > 1 else ""
+        for f in review_diff(chunk, model=model, preamble=preamble):
+            key = (f.file, f.line, f.summary.strip().lower())
+            if key not in seen:
+                seen.add(key)
+                findings.append(f)
+    return findings
+
+
+def review_diff(diff: str, model: str = DEFAULT_MODEL, preamble: str = "") -> list[Finding]:
     if not diff.strip():
         return []
 
@@ -91,7 +123,7 @@ def review_diff(diff: str, model: str = DEFAULT_MODEL) -> list[Finding]:
         messages=[
             {
                 "role": "user",
-                "content": f"Review this diff:\n\n```diff\n{diff}\n```",
+                "content": f"{preamble}Review this diff:\n\n```diff\n{diff}\n```",
             }
         ],
     )

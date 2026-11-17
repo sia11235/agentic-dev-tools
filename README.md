@@ -24,7 +24,24 @@ agentic-tools review --staged
 
 # machine-readable output, e.g. for piping into CI annotations
 agentic-tools review --format json
+
+# a single commit, against its parent
+agentic-tools review --commit 6f59e93
+
+# any revision range (three dots = since the merge-base, like a PR)
+agentic-tools review --range origin/develop...feature/network-dashboard
 ```
+
+Large diffs are split by file into requests of at most `--max-chunk-chars`
+(default 60,000 characters, about 15k tokens); a file bigger than that is split
+on hunk boundaries. Each part is told which other files are in the full diff, so
+it doesn't flag "missing" tests or callers that live in another part. Findings
+are merged and deduplicated.
+
+Lockfiles, `__pycache__`/`.pyc`, minified and source-map files, `dist/` and
+`build/`, migration metadata and image/font assets are skipped by default (the
+skipped list is printed to stderr). Add your own with `--exclude 'drizzle/*'`
+(repeatable), or review everything with `--no-default-excludes`.
 
 Requires `ANTHROPIC_API_KEY` in the environment.
 
