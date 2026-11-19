@@ -12,6 +12,7 @@ license = { text = "MIT" }
 dependencies = [
     "anthropic>=0.40.0",
     "click>=8.1",
+    "python-dotenv>=1.0",
 ]
 
 [project.scripts]

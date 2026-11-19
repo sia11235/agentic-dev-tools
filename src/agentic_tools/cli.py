@@ -3,10 +3,13 @@ from __future__ import annotations
 import sys
 
 import click
+from dotenv import find_dotenv, load_dotenv
 
 from .review.diff import GitError, get_diff
 from .review.report import render_json, render_markdown, render_text
 from .review.reviewer import DEFAULT_MODEL, ReviewError, review_diff
+
+load_dotenv(find_dotenv(usecwd=True))
 
 
 @click.group()

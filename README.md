@@ -26,7 +26,11 @@ agentic-tools review --staged
 agentic-tools review --format json
 ```
 
-Requires `ANTHROPIC_API_KEY` in the environment.
+Requires `ANTHROPIC_API_KEY`, either exported in the environment or in a
+`.env` file (see `.env.example`). `.env` is loaded automatically from the
+current directory or any parent directory, so you can drop one in whichever
+repo you're running `agentic-tools` from — the key only loads for that
+invocation, not globally into every shell.
 
 ## Setup
 
@@ -34,7 +38,7 @@ Requires `ANTHROPIC_API_KEY` in the environment.
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
-export ANTHROPIC_API_KEY=sk-...
+cp .env.example .env   # then edit .env with your real key
 ```
 
 ## Roadmap
